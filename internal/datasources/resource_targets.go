@@ -35,6 +35,7 @@ type ResourceTargetItemModel struct {
 	SiteID               types.Int64         `tfsdk:"site_id"`
 	IP                   types.String        `tfsdk:"ip"`
 	Method               types.String        `tfsdk:"method"`
+	Mode                 types.String        `tfsdk:"mode"`
 	Port                 types.Int64         `tfsdk:"port"`
 	Enabled              types.Bool          `tfsdk:"enabled"`
 	SiteType             types.String        `tfsdk:"site_type"`
@@ -99,7 +100,8 @@ func (d *ResourceTargetsDataSource) Schema(_ context.Context, _ datasource.Schem
 						"resource_id":           schema.Int64Attribute{Description: "ID of the resource this target belongs to.", Computed: true},
 						"site_id":               schema.Int64Attribute{Description: "ID of the site that serves this target.", Computed: true},
 						"ip":                    schema.StringAttribute{Description: "Target IP or hostname.", Computed: true},
-						"method":                schema.StringAttribute{Description: "Scheme used to reach the target (`http` or `https`).", Computed: true},
+						"method":                schema.StringAttribute{Description: "Scheme used to reach the target (`http` or `https`); null for a raw TCP/UDP target.", Computed: true},
+						"mode":                  schema.StringAttribute{Description: "This target's own mode: `http`, `tcp`, or `udp`.", Computed: true},
 						"port":                  schema.Int64Attribute{Description: "Target port.", Computed: true},
 						"enabled":               schema.BoolAttribute{Description: "Whether the target is currently enabled.", Computed: true},
 						"site_type":             schema.StringAttribute{Description: "Site type (e.g. `newt`).", Computed: true},
@@ -174,7 +176,8 @@ func (d *ResourceTargetsDataSource) Read(ctx context.Context, req datasource.Rea
 			ResourceID:           types.Int64Value(int64(t.ResourceID)),
 			SiteID:               types.Int64Value(int64(t.SiteID)),
 			IP:                   types.StringValue(t.IP),
-			Method:               types.StringValue(t.Method),
+			Method:               tfconv.StringFromPtr(t.Method),
+			Mode:                 types.StringValue(t.Mode),
 			Port:                 types.Int64Value(int64(t.Port)),
 			Enabled:              types.BoolValue(t.Enabled),
 			SiteType:             types.StringValue(t.SiteType),

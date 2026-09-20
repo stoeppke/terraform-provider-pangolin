@@ -635,17 +635,21 @@ type TargetHCHeader struct {
 // response (cf. roles' sshSudoCommands quirk). HCHeadersRaw holds
 // that string; ParseTargetHCHeaders decodes it into []TargetHCHeader.
 type Target struct {
-	TargetID            int    `json:"targetId"`
-	ResourceID          int    `json:"resourceId"`
-	SiteID              int    `json:"siteId"`
-	IP                  string `json:"ip"`
-	Method              string `json:"method"`
-	Port                int    `json:"port"`
-	Enabled             bool   `json:"enabled"`
-	TargetHealthCheckID *int   `json:"targetHealthCheckId,omitempty"`
-	OrgID               string `json:"orgId,omitempty"`
-	Name                string `json:"name,omitempty"`
-	InternalPort        *int   `json:"internalPort,omitempty"`
+	TargetID   int    `json:"targetId"`
+	ResourceID int    `json:"resourceId"`
+	SiteID     int    `json:"siteId"`
+	IP         string `json:"ip"`
+	// Method is nil for raw TCP/UDP targets, where the API's own value is
+	// JSON null rather than an empty string - a plain string field here
+	// would silently collapse that null to "", masking the distinction.
+	Method              *string `json:"method"`
+	Mode                string  `json:"mode"`
+	Port                int     `json:"port"`
+	Enabled             bool    `json:"enabled"`
+	TargetHealthCheckID *int    `json:"targetHealthCheckId,omitempty"`
+	OrgID               string  `json:"orgId,omitempty"`
+	Name                string  `json:"name,omitempty"`
+	InternalPort        *int    `json:"internalPort,omitempty"`
 
 	// List-view extras (read-only; emitted by /resource/{id}/targets
 	// and the create/update responses)
@@ -806,11 +810,16 @@ func (c *Client) ListResourceUsers(ctx context.Context, resourceID int) ([]Resou
 // typed slice; the server returns it back as a JSON-string in the
 // response (cf. Target.HCHeadersRaw).
 type CreateTargetRequest struct {
-	IP      string `json:"ip"`
-	Port    int    `json:"port"`
-	Method  string `json:"method"`
-	SiteID  int    `json:"siteId"`
-	Enabled *bool  `json:"enabled,omitempty"`
+	IP     string `json:"ip"`
+	Port   int    `json:"port"`
+	Method string `json:"method"`
+	// Mode is only sent when the caller sets it explicitly (omitempty) - an
+	// absent mode lets the server inherit the parent resource's own mode,
+	// which is the server's own default behavior and shouldn't be
+	// second-guessed client-side.
+	Mode    *string `json:"mode,omitempty"`
+	SiteID  int     `json:"siteId"`
+	Enabled *bool   `json:"enabled,omitempty"`
 
 	// Health-check configuration
 	HCEnabled            *bool            `json:"hcEnabled,omitempty"`
@@ -870,11 +879,12 @@ func (c *Client) GetTarget(ctx context.Context, targetID int) (*Target, error) {
 // the CreateTargetRequest shape - every hc* / routing field is
 // optional, sent only when the pointer is non-nil.
 type UpdateTargetRequest struct {
-	IP      string `json:"ip"`
-	Port    int    `json:"port"`
-	Method  string `json:"method"`
-	Enabled bool   `json:"enabled"`
-	SiteID  int    `json:"siteId"`
+	IP      string  `json:"ip"`
+	Port    int     `json:"port"`
+	Method  string  `json:"method"`
+	Mode    *string `json:"mode,omitempty"`
+	Enabled bool    `json:"enabled"`
+	SiteID  int     `json:"siteId"`
 
 	// Health-check configuration
 	HCEnabled            *bool            `json:"hcEnabled,omitempty"`
