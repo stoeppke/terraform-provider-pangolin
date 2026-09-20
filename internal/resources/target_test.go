@@ -1,9 +1,12 @@
 package resources
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stackopshq/terraform-provider-pangolin/internal/client"
 )
@@ -23,7 +26,7 @@ func TestTargetToModel_FullPayload(t *testing.T) {
 		SiteID:               5,
 		IP:                   "10.0.0.1",
 		Port:                 8080,
-		Method:               "https",
+		Method:               strPtr("https"),
 		Enabled:              true,
 		HCEnabled:            true,
 		HCPath:               strPtr("/health"),
@@ -122,7 +125,7 @@ func TestTargetToModel_MinimalPayload(t *testing.T) {
 		SiteID:     3,
 		IP:         "x",
 		Port:       80,
-		Method:     "http",
+		Method:     strPtr("http"),
 		Enabled:    false,
 	}
 	m := targetToModel(tgt, TargetResourceModel{})
@@ -192,7 +195,7 @@ func TestTargetToModel_MalformedHCHeadersFallsBackToEmpty(t *testing.T) {
 	raw := "not-json-at-all"
 	tgt := &client.Target{
 		TargetID: 1, ResourceID: 2, SiteID: 3,
-		IP: "x", Port: 80, Method: "http",
+		IP: "x", Port: 80, Method: strPtr("http"),
 		HCHeadersRaw: &raw,
 	}
 	m := targetToModel(tgt, TargetResourceModel{})
@@ -385,4 +388,103 @@ func contains(haystack, needle string) bool {
 		}
 	}
 	return false
+}
+
+// -----------------------------------------------------------------------------
+// method: empty string for raw TCP/UDP targets
+// -----------------------------------------------------------------------------
+
+// Real raw TCP/UDP targets (no HTTP scheme) come back from the API with
+// method == "" rather than "http"/"https" - targetToModel must pass that
+// straight through as null rather than coercing it to a default or to the
+// empty string. The client's Method field is *string precisely so this
+// distinction survives JSON decoding: see the comment on client.Target.
+func TestTargetToModel_NilMethodMapsToNull(t *testing.T) {
+	tgt := &client.Target{
+		TargetID:   1,
+		ResourceID: 1,
+		SiteID:     1,
+		IP:         "10.0.0.1",
+		Port:       22,
+		Method:     nil,
+		Enabled:    true,
+		HCHealth:   "unknown",
+	}
+	m := targetToModel(tgt, TargetResourceModel{})
+	if !m.Method.IsNull() {
+		t.Errorf("Method = %q, want null for a raw TCP/UDP target", m.Method.ValueString())
+	}
+}
+
+// Defensive: if the API ever does send a literal empty string rather than
+// null, it must pass through as an explicit "" (a real, distinct value),
+// not be conflated with the null case above.
+func TestTargetToModel_ExplicitEmptyStringMethodPassesThrough(t *testing.T) {
+	tgt := &client.Target{
+		TargetID:   1,
+		ResourceID: 1,
+		SiteID:     1,
+		IP:         "10.0.0.1",
+		Port:       22,
+		Method:     strPtr(""),
+		Enabled:    true,
+		HCHealth:   "unknown",
+	}
+	m := targetToModel(tgt, TargetResourceModel{})
+	if m.Method.IsNull() {
+		t.Errorf("Method should be an explicit empty string, not null")
+	}
+	if got := m.Method.ValueString(); got != "" {
+		t.Errorf("Method = %q, want empty string", got)
+	}
+}
+
+func TestMethodValidator_AcceptsEmptyString(t *testing.T) {
+	v := stringvalidator.OneOf("http", "https", "")
+
+	for _, tc := range []struct {
+		value   string
+		wantErr bool
+	}{
+		{"http", false},
+		{"https", false},
+		{"", false},
+		{"ftp", true},
+	} {
+		req := validator.StringRequest{ConfigValue: types.StringValue(tc.value)}
+		resp := &validator.StringResponse{}
+		v.ValidateString(context.Background(), req, resp)
+		if got := resp.Diagnostics.HasError(); got != tc.wantErr {
+			t.Errorf("method = %q: error = %v, want %v", tc.value, got, tc.wantErr)
+		}
+	}
+}
+
+// -----------------------------------------------------------------------------
+// mode: wire -> state, and plan -> request
+// -----------------------------------------------------------------------------
+
+func TestTargetToModel_ModeMapping(t *testing.T) {
+	tgt := &client.Target{
+		TargetID: 1, ResourceID: 1, SiteID: 1,
+		IP: "10.0.0.1", Port: 22, Method: nil, Mode: "tcp", Enabled: true,
+		HCHealth: "unknown",
+	}
+	m := targetToModel(tgt, TargetResourceModel{})
+	if got := m.Mode.ValueString(); got != "tcp" {
+		t.Errorf("Mode = %q, want %q", got, "tcp")
+	}
+}
+
+func TestStringPtrIfSet(t *testing.T) {
+	if got := stringPtrIfSet(types.StringNull()); got != nil {
+		t.Errorf("null should map to nil, got %q", *got)
+	}
+	if got := stringPtrIfSet(types.StringUnknown()); got != nil {
+		t.Errorf("unknown should map to nil, got %q", *got)
+	}
+	got := stringPtrIfSet(types.StringValue("tcp"))
+	if got == nil || *got != "tcp" {
+		t.Errorf("StringValue(%q) should map to a pointer to %q, got %v", "tcp", "tcp", got)
+	}
 }

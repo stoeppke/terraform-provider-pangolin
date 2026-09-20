@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -46,6 +45,7 @@ type TargetResourceModel struct {
 	IP         types.String `tfsdk:"ip"`
 	Port       types.Int64  `tfsdk:"port"`
 	Method     types.String `tfsdk:"method"`
+	Mode       types.String `tfsdk:"mode"`
 	Enabled    types.Bool   `tfsdk:"enabled"`
 
 	// Health-check configuration (all optional + computed)
@@ -130,12 +130,21 @@ func (r *TargetResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				},
 			},
 			"method": schema.StringAttribute{
-				Description: "Scheme used to reach the target (`http` or `https`). Defaults to `http`.",
-				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString("http"),
+				Description: "Scheme used to reach the target: `http`, `https`, or `\"\"` for a raw " +
+					"TCP/UDP target. Defaults to `http` when unset.",
+				Optional: true,
+				Computed: true,
 				Validators: []validator.String{
-					stringvalidator.OneOf("http", "https"),
+					stringvalidator.OneOf("http", "https", ""),
+				},
+			},
+			"mode": schema.StringAttribute{
+				Description: "This target's transport mode: `http`, `tcp`, or `udp`. Defaults to the " +
+					"parent resource's own mode when unset.",
+				Optional: true,
+				Computed: true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("http", "tcp", "udp"),
 				},
 			},
 			"enabled": schema.BoolAttribute{
@@ -366,6 +375,34 @@ func (r *TargetResource) Configure(_ context.Context, req resource.ConfigureRequ
 	r.client = c
 }
 
+// resolveMethod applies the "http" default in code rather than via a schema
+// plan-modifier Default, because a schema Default cannot distinguish "the
+// user wrote nothing, give me the normal default" from "the user wants no
+// HTTP method at all" - both would otherwise collapse to the same "http"
+// value. Omitted or unknown means the normal default; anything the user
+// actually wrote, including the empty string for a raw TCP/UDP target,
+// passes through unchanged.
+func resolveMethod(m types.String) string {
+	if m.IsNull() || m.IsUnknown() {
+		return "http"
+	}
+	return m.ValueString()
+}
+
+// stringPtrIfSet returns nil when v is null or unknown, so the request body
+// omits the field entirely (via its `omitempty` tag) and the server falls
+// back to its own default rather than the provider guessing one. Used for
+// mode, which - unlike method - has a meaningful server-side default
+// (inherit the parent resource's mode) that the client shouldn't override
+// with a client-side literal.
+func stringPtrIfSet(v types.String) *string {
+	if v.IsNull() || v.IsUnknown() {
+		return nil
+	}
+	s := v.ValueString()
+	return &s
+}
+
 func (r *TargetResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan TargetResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
@@ -376,7 +413,8 @@ func (r *TargetResource) Create(ctx context.Context, req resource.CreateRequest,
 	createReq := &client.CreateTargetRequest{
 		IP:     plan.IP.ValueString(),
 		Port:   int(plan.Port.ValueInt64()),
-		Method: plan.Method.ValueString(),
+		Method: resolveMethod(plan.Method),
+		Mode:   stringPtrIfSet(plan.Mode),
 		SiteID: int(plan.SiteID.ValueInt64()),
 	}
 	if v := plan.Enabled.ValueBool(); plan.Enabled.IsNull() || plan.Enabled.IsUnknown() {
@@ -434,7 +472,8 @@ func (r *TargetResource) Update(ctx context.Context, req resource.UpdateRequest,
 	updateReq := &client.UpdateTargetRequest{
 		IP:      plan.IP.ValueString(),
 		Port:    int(plan.Port.ValueInt64()),
-		Method:  plan.Method.ValueString(),
+		Method:  resolveMethod(plan.Method),
+		Mode:    stringPtrIfSet(plan.Mode),
 		Enabled: plan.Enabled.ValueBool(),
 		SiteID:  int(plan.SiteID.ValueInt64()),
 	}
@@ -581,7 +620,8 @@ func targetToModel(t *client.Target, prior TargetResourceModel) TargetResourceMo
 		SiteID:               types.Int64Value(int64(t.SiteID)),
 		IP:                   types.StringValue(t.IP),
 		Port:                 types.Int64Value(int64(t.Port)),
-		Method:               types.StringValue(t.Method),
+		Method:               tfconv.StringFromPtr(t.Method),
+		Mode:                 types.StringValue(t.Mode),
 		Enabled:              types.BoolValue(t.Enabled),
 		HCEnabled:            types.BoolValue(t.HCEnabled),
 		HCPath:               tfconv.StringFromPtr(t.HCPath),
