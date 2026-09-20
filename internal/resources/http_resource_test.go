@@ -530,3 +530,40 @@ func TestIsUnknownList(t *testing.T) {
 		t.Errorf("populated slice is not unknown")
 	}
 }
+
+// -----------------------------------------------------------------------------
+// subdomainRegex
+// -----------------------------------------------------------------------------
+
+func TestSubdomainRegex(t *testing.T) {
+	valid := []string{
+		"app",
+		"bi.data",
+		"vault.weingin",
+		"a1-b2.c3-d4",
+		"a",
+		"a.b.c",
+	}
+	for _, s := range valid {
+		if !subdomainRegex.MatchString(s) {
+			t.Errorf("expected %q to be a valid subdomain", s)
+		}
+	}
+
+	invalid := []string{
+		"",
+		"-app",
+		"app-",
+		"App",
+		"app_name",
+		".app",
+		"app.",
+		"app..data",
+		"app.-data",
+	}
+	for _, s := range invalid {
+		if subdomainRegex.MatchString(s) {
+			t.Errorf("expected %q to be rejected", s)
+		}
+	}
+}
