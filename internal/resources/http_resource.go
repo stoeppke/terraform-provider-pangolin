@@ -28,6 +28,17 @@ var (
 	_ resource.ResourceWithImportState = &HTTPResource{}
 )
 
+// subdomainRegex matches one or more RFC 1123 DNS labels separated by dots,
+// e.g. "app" or "bi.data" or "vault.weingin". Each label independently
+// follows the single-label rule (lowercase letters, digits, hyphens; cannot
+// start or end with a hyphen; max 63 characters). Pangolin's own server-side
+// validation accepts multi-label subdomains (confirmed against a live
+// instance); the provider's client-side validator previously only allowed a
+// single label, rejecting real, already-existing resources.
+var subdomainRegex = regexp.MustCompile(
+	`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$`,
+)
+
 // HTTPResource defines the resource implementation.
 type HTTPResource struct {
 	client *client.Client
@@ -140,11 +151,10 @@ func (r *HTTPResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 					"for L4 modes. Set to null to use the base domain.",
 				Optional: true,
 				Validators: []validator.String{
-					// RFC 1123 label: lowercase letters, digits, hyphens; cannot
-					// start or end with a hyphen; max 63 characters.
 					stringvalidator.RegexMatches(
-						regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`),
-						"must be a valid DNS label (lowercase letters, digits and hyphens; cannot start or end with a hyphen)",
+						subdomainRegex,
+						"must be one or more valid DNS labels separated by dots (lowercase letters, digits and "+
+							"hyphens per label; a label cannot start or end with a hyphen)",
 					),
 				},
 			},
