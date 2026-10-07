@@ -4409,3 +4409,38 @@ func extractParam(rawQuery, key string) string {
 	}
 	return ""
 }
+
+func TestResource_RequestHeadersWireShapes(t *testing.T) {
+	want := []ResourceHeader{{Name: "X-A", Value: "1"}}
+	cases := map[string]struct {
+		body string
+		want []ResourceHeader
+	}{
+		// GET /resource/{id} on Pangolin >= 1.24
+		"requestHeaders array": {`{"requestHeaders":[{"name":"X-A","value":"1"}],"responseHeaders":null}`, want},
+		// PUT/POST responses on Pangolin >= 1.24 return the raw DB column
+		"requestHeaders string": {`{"requestHeaders":"[{\"name\":\"X-A\",\"value\":\"1\"}]"}`, want},
+		// Servers before 1.24
+		"legacy headers array":  {`{"headers":[{"name":"X-A","value":"1"}]}`, want},
+		"legacy headers string": {`{"headers":"[{\"name\":\"X-A\",\"value\":\"1\"}]"}`, want},
+		"null":                  {`{"requestHeaders":null,"headers":null}`, nil},
+		"absent":                {`{}`, nil},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var r Resource
+			if err := json.Unmarshal([]byte(tc.body), &r); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			got := r.RequestHeadersOrLegacy()
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %+v, want %+v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("[%d] = %+v, want %+v", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
