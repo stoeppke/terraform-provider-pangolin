@@ -789,9 +789,9 @@ func applyHTTPResourceResponse(m HTTPResourceModel, res *client.Resource) HTTPRe
 
 	// Headers - round-trip the list. An absent/empty wire list keeps
 	// the model at nil so it round-trips as null (Optional+Computed).
-	if len(res.Headers) > 0 {
-		hs := make([]ResourceHeaderModel, len(res.Headers))
-		for i, h := range res.Headers {
+	if headers := res.RequestHeadersOrLegacy(); len(headers) > 0 {
+		hs := make([]ResourceHeaderModel, len(headers))
+		for i, h := range headers {
 			hs[i] = ResourceHeaderModel{
 				Name:  types.StringValue(h.Name),
 				Value: types.StringValue(h.Value),

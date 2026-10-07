@@ -454,6 +454,32 @@ type ResourceHeader struct {
 	Value string `json:"value"`
 }
 
+// ResourceHeaderList decodes a resource's header list from either wire
+// shape: GET /resource/{id} returns a native JSON array, while the
+// PUT /org/{org}/resource and POST /resource/{id} responses return the
+// raw database column, i.e. the same array JSON-encoded as a string.
+type ResourceHeaderList []ResourceHeader
+
+func (l *ResourceHeaderList) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return fmt.Errorf("decode headers string: %w", err)
+		}
+		if s == "" {
+			*l = nil
+			return nil
+		}
+		data = []byte(s)
+	}
+	var hs []ResourceHeader
+	if err := json.Unmarshal(data, &hs); err != nil {
+		return fmt.Errorf("decode headers: %w", err)
+	}
+	*l = hs
+	return nil
+}
+
 // Resource represents a Pangolin HTTP resource.
 //
 // Pangolin 1.19 dropped the legacy `http bool` + `protocol` split in
@@ -495,11 +521,17 @@ type Resource struct {
 	TLSServerName         *string `json:"tlsServerName"`
 
 	// 1.19 additions - routing / auth
-	SetHostHeader *string          `json:"setHostHeader,omitempty"`
-	EnableProxy   *bool            `json:"enableProxy,omitempty"`
-	Headers       []ResourceHeader `json:"headers,omitempty"`
-	SkipToIdpID   *int             `json:"skipToIdpId,omitempty"`
-	PostAuthPath  *string          `json:"postAuthPath,omitempty"`
+	SetHostHeader *string `json:"setHostHeader,omitempty"`
+	EnableProxy   *bool   `json:"enableProxy,omitempty"`
+
+	// Pangolin 1.24 renamed `headers` to `requestHeaders` on the wire
+	// (and added `responseHeaders`); `headers` is still accepted on
+	// writes as a deprecated alias but no longer returned. Read both
+	// and let RequestHeadersOrLegacy pick.
+	Headers        ResourceHeaderList `json:"headers,omitempty"`
+	RequestHeaders ResourceHeaderList `json:"requestHeaders,omitempty"`
+	SkipToIdpID    *int               `json:"skipToIdpId,omitempty"`
+	PostAuthPath   *string            `json:"postAuthPath,omitempty"`
 
 	// 1.19 additions - proxy-protocol
 	ProxyProtocol        *bool `json:"proxyProtocol,omitempty"`
@@ -579,6 +611,16 @@ type CreateResourceRequest struct {
 	// server builds keep receiving the pre-1.19 payload unchanged.
 	Mode      string `json:"mode,omitempty"`
 	ProxyPort *int   `json:"proxyPort,omitempty"`
+}
+
+// RequestHeadersOrLegacy returns the resource's request headers,
+// preferring `requestHeaders` (Pangolin >= 1.24) over the legacy
+// `headers` field of older servers.
+func (r *Resource) RequestHeadersOrLegacy() []ResourceHeader {
+	if len(r.RequestHeaders) > 0 {
+		return r.RequestHeaders
+	}
+	return r.Headers
 }
 
 // CreateResource creates a new HTTP resource.
