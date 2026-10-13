@@ -3356,24 +3356,36 @@ type ResourceListItem struct {
 }
 
 // GetResourceAuthState returns the auth IDs for a resource via list + filter.
+// The list endpoint is paginated (20 per page by default), so walk every page:
+// reading only the first one reports resources further down as not found.
 func (c *Client) GetResourceAuthState(ctx context.Context, resourceID int) (*ResourceAuthState, error) {
-	resp, err := c.doRequest(ctx, "GET", fmt.Sprintf("/org/%s/resources", c.OrgID), nil)
-	if err != nil {
-		return nil, err
-	}
-	var result struct {
-		Resources []ResourceListItem `json:"resources"`
-	}
-	if err := json.Unmarshal(resp.Data, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse resources: %w", err)
-	}
-	for _, r := range result.Resources {
-		if r.ResourceID == resourceID {
-			return &ResourceAuthState{
-				PasswordID:   r.PasswordID,
-				PincodeID:    r.PincodeID,
-				HeaderAuthID: r.HeaderAuthID,
-			}, nil
+	const pageSize = 100
+	for page, seen := 1, 0; ; page++ {
+		resp, err := c.doRequest(ctx, "GET", fmt.Sprintf("/org/%s/resources?pageSize=%d&page=%d", c.OrgID, pageSize, page), nil)
+		if err != nil {
+			return nil, err
+		}
+		var result struct {
+			Resources  []ResourceListItem `json:"resources"`
+			Pagination struct {
+				Total int `json:"total"`
+			} `json:"pagination"`
+		}
+		if err := json.Unmarshal(resp.Data, &result); err != nil {
+			return nil, fmt.Errorf("failed to parse resources: %w", err)
+		}
+		for _, r := range result.Resources {
+			if r.ResourceID == resourceID {
+				return &ResourceAuthState{
+					PasswordID:   r.PasswordID,
+					PincodeID:    r.PincodeID,
+					HeaderAuthID: r.HeaderAuthID,
+				}, nil
+			}
+		}
+		seen += len(result.Resources)
+		if len(result.Resources) == 0 || seen >= result.Pagination.Total {
+			break
 		}
 	}
 	return nil, fmt.Errorf("resource %d: %w", resourceID, ErrNotFound)
