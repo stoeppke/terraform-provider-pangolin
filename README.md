@@ -2,12 +2,13 @@
 
 The **Pangolin** Terraform provider lets you manage [Pangolin](https://github.com/fosrl/pangolin) infrastructure as code: organizations, sites, HTTP and private site resources, targets, roles, users, API keys, OLM clients, domains, identity providers, access-control rules, and all assignments.
 
-> **This is a fork** of [stackopshq/terraform-provider-pangolin](https://github.com/stackopshq/terraform-provider-pangolin), not affiliated with StackOps. `main` here is upstream `main` (v1.6.1) plus the fixes below, which I need to manage a live Pangolin instance (1.24) with OpenTofu. Upstream has not merged anything since 2026-07-16; if it picks these up, this fork goes back to plain upstream. Anyone is welcome to use the fixes or turn them into upstream PRs: each one also sits on its own `fix/*` branch based on upstream `main`.
+> **This is a fork** of [stackopshq/terraform-provider-pangolin](https://github.com/stackopshq/terraform-provider-pangolin), not affiliated with StackOps. `main` here is upstream `main` (v1.6.1) plus the fixes below, which I need to manage a live Pangolin instance (1.24) with OpenTofu. Some come from other people's open upstream PRs, cherry-picked with authorship kept. Upstream has not merged anything since 2026-07-16; if it picks these up, this fork goes back to plain upstream. Anyone is welcome to use the fixes or turn them into upstream PRs: each of my own also sits on its own `fix/*` branch based on upstream `main`; the others are open upstream PRs already.
 >
 > | Fix | Branch | Upstream |
 > |---|---|---|
-> | Allow multi-label subdomains (`a.b`) on `pangolin_resource` | `fix/multi-label-subdomains` | same fix in PR #69 |
-> | Preserve IdP secret and resource `protocol` on import; empty IdP variant read as `oidc` | — | PR #61 / issue #60 (cherry-picked) |
+> | Subdomain validation matches the server: multi-label (`a.b`) and wildcards (`*`, `*.a`) | — | PR #69 by @javillegasna (cherry-picked; replaces my own multi-label fix) |
+> | Preserve IdP secret and resource `protocol` on import; empty IdP variant read as `oidc` | — | PR #61 by @Dr-Crow / issue #60 (cherry-picked) |
+> | `COUNTRY_IS_NOT` and `REGION` as `pangolin_resource_rule` match types; rule import uses the resource ID from the import address | — | PR #59 by @paradizelost (cherry-picked) |
 > | Raw TCP/UDP targets: `method` may be empty, new `mode` attribute on `pangolin_target` | `fix/raw-tcp-udp-empty-method` | — (related: issue #64) |
 > | Read `requestHeaders` (Pangolin >= 1.24 renamed `headers`) | `fix/resource-request-headers` | — |
 > | Read header auth / password / PIN state across all pages of the resources list | `fix/resource-auth-pagination` | — |
