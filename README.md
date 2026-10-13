@@ -2,6 +2,18 @@
 
 The **Pangolin** Terraform provider lets you manage [Pangolin](https://github.com/fosrl/pangolin) infrastructure as code: organizations, sites, HTTP and private site resources, targets, roles, users, API keys, OLM clients, domains, identity providers, access-control rules, and all assignments.
 
+> **This is a fork** of [stackopshq/terraform-provider-pangolin](https://github.com/stackopshq/terraform-provider-pangolin), not affiliated with StackOps. `main` here is upstream `main` (v1.6.1) plus the fixes below, which I need to manage a live Pangolin instance (1.24) with OpenTofu. Upstream has not merged anything since 2026-07-16; if it picks these up, this fork goes back to plain upstream. Anyone is welcome to use the fixes or turn them into upstream PRs: each one also sits on its own `fix/*` branch based on upstream `main`.
+>
+> | Fix | Branch | Upstream |
+> |---|---|---|
+> | Allow multi-label subdomains (`a.b`) on `pangolin_resource` | `fix/multi-label-subdomains` | same fix in PR #69 |
+> | Preserve IdP secret and resource `protocol` on import; empty IdP variant read as `oidc` | — | PR #61 / issue #60 (cherry-picked) |
+> | Raw TCP/UDP targets: `method` may be empty, new `mode` attribute on `pangolin_target` | `fix/raw-tcp-udp-empty-method` | — (related: issue #64) |
+> | Read `requestHeaders` (Pangolin >= 1.24 renamed `headers`) | `fix/resource-request-headers` | — |
+> | Read header auth / password / PIN state across all pages of the resources list | `fix/resource-auth-pagination` | — |
+>
+> The registry still serves upstream's build. To use this one, build it (`go build -o <dir>/terraform-provider-pangolin .`) and point a `dev_overrides` block for `stackopshq/pangolin` at `<dir>`.
+
 [![Terraform Registry](https://img.shields.io/badge/Terraform-Registry-purple)](https://registry.terraform.io/providers/stackopshq/pangolin)
 [![OpenTofu Registry](https://img.shields.io/badge/OpenTofu-Registry-yellow)](https://search.opentofu.org/provider/stackopshq/pangolin)
 [![License: MPL-2.0](https://img.shields.io/badge/License-MPL--2.0-blue)](LICENSE)
