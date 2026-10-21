@@ -335,17 +335,18 @@ func (r *HTTPResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				},
 			},
 			"proxy_protocol": schema.BoolAttribute{
-				Description: "Whether PROXY-protocol encapsulation is on for the upstream L4 socket. " +
-					"Read-only in the current provider - the server-side POST endpoint refuses this key.",
+				Description: "Open each upstream connection of an L4 (`tcp`/`udp`) resource with a PROXY " +
+					"protocol header carrying the client's address. L4 resources only; HTTP resources refuse it.",
+				Optional: true,
 				Computed: true,
 				PlanModifiers: []planmodifier.Bool{
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"proxy_protocol_version": schema.Int64Attribute{
-				Description: "PROXY-protocol version (1 or 2). Read-only in the current provider - " +
-					"the server-side POST endpoint refuses this key.",
-				Computed: true,
+				Description: "PROXY protocol version (1 or 2) used when `proxy_protocol` is true. L4 resources only.",
+				Optional:    true,
+				Computed:    true,
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
 				},
@@ -490,19 +491,28 @@ func (r *HTTPResource) Create(ctx context.Context, req resource.CreateRequest, r
 	plan.NiceID = types.StringValue(resource.NiceID)
 
 	// L4 resources (mode = tcp/udp) reject almost every scalar on
-	// the follow-up POST /resource/{id} - only `name`, `enabled`,
-	// and `proxyPort` are accepted, and proxyPort is create-only.
-	// So we hydrate from the Create response directly and skip the
-	// Update round-trip. L7 (http) still uses the historical
-	// Create + Update pattern so user-set sso/ssl/etc. are pushed.
-	if mode == "http" {
+	// the follow-up POST /resource/{id}; the raw update schema takes
+	// `name`, `enabled`, `proxyPort` and the PROXY protocol settings.
+	// So they hydrate from the Create response and only make the
+	// Update round-trip when the PROXY protocol is configured. L7
+	// (http) still uses the historical Create + Update pattern so
+	// user-set sso/ssl/etc. are pushed.
+	switch {
+	case mode == "http":
 		updated, err := r.client.UpdateResource(ctx, int(plan.ID.ValueInt64()), buildHTTPResourceUpdateRequest(plan))
 		if err != nil {
 			resp.Diagnostics.AddError("Failed to apply resource settings after creation", err.Error())
 			return
 		}
 		plan = applyHTTPResourceResponse(plan, updated)
-	} else {
+	case !plan.ProxyProtocol.IsNull() && !plan.ProxyProtocol.IsUnknown():
+		updated, err := r.client.UpdateResource(ctx, int(plan.ID.ValueInt64()), buildL4ResourceUpdateRequest(plan))
+		if err != nil {
+			resp.Diagnostics.AddError("Failed to apply the PROXY protocol after creation", err.Error())
+			return
+		}
+		plan = applyHTTPResourceResponse(plan, updated)
+	default:
 		plan = applyHTTPResourceResponse(plan, resource)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -536,16 +546,12 @@ func (r *HTTPResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	// See the note in Create: L4 resources accept only `name` and
-	// `enabled` on POST /resource/{id}. Build a narrow payload for
-	// them so we don't 400 on an unrelated field the user could not
-	// have written anyway.
+	// See the note in Create: L4 resources take a narrow payload on
+	// POST /resource/{id}, so they get their own request instead of
+	// 400ing on an HTTP-only field.
 	updateReq := buildHTTPResourceUpdateRequest(plan)
 	if plan.Mode.ValueString() != "http" {
-		updateReq = &client.UpdateResourceRequest{
-			Name:    plan.Name.ValueString(),
-			Enabled: updateReq.Enabled,
-		}
+		updateReq = buildL4ResourceUpdateRequest(plan)
 	}
 	res, err := r.client.UpdateResource(ctx, int(plan.ID.ValueInt64()), updateReq)
 	if err != nil {
@@ -587,6 +593,27 @@ func (r *HTTPResource) ImportState(ctx context.Context, req resource.ImportState
 	state := HTTPResourceModel{ID: types.Int64Value(int64(res.ResourceID))}
 	state = applyHTTPResourceResponse(state, res)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// buildL4ResourceUpdateRequest builds the payload the raw (tcp/udp) update
+// schema accepts: name, enabled and the PROXY protocol settings.
+func buildL4ResourceUpdateRequest(plan HTTPResourceModel) *client.UpdateResourceRequest {
+	req := &client.UpdateResourceRequest{
+		Name: plan.Name.ValueString(),
+	}
+	if !plan.Enabled.IsUnknown() {
+		v := plan.Enabled.ValueBool()
+		req.Enabled = &v
+	}
+	if !plan.ProxyProtocol.IsNull() && !plan.ProxyProtocol.IsUnknown() {
+		v := plan.ProxyProtocol.ValueBool()
+		req.ProxyProtocol = &v
+	}
+	if !plan.ProxyProtocolVersion.IsNull() && !plan.ProxyProtocolVersion.IsUnknown() {
+		v := int(plan.ProxyProtocolVersion.ValueInt64())
+		req.ProxyProtocolVersion = &v
+	}
+	return req
 }
 
 // buildHTTPResourceUpdateRequest builds an UpdateResourceRequest from the model,

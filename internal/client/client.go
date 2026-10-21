@@ -1435,11 +1435,14 @@ type UpdateResourceRequest struct {
 	StickySession         *bool   `json:"stickySession,omitempty"`
 	TLSServerName         *string `json:"tlsServerName,omitempty"`
 
-	// 1.19+ additions - routing / auth. `enableProxy`,
-	// `proxyProtocol` and `proxyProtocolVersion` were probed on the
-	// live 1.19 ent server: POST /resource/{id} answers with
-	// `Unrecognized key`. They stay on the wire struct (Read
-	// surfaces them) but not on the write payload.
+	// 1.19+ additions - routing / auth. `enableProxy` is refused by
+	// POST /resource/{id} (`Unrecognized key`). `proxyProtocol` and
+	// `proxyProtocolVersion` belong to the raw (tcp/udp) update schema
+	// only; the HTTP schema refuses them, so only the L4 payload
+	// (buildL4ResourceUpdateRequest) sets them.
+	ProxyProtocol        *bool `json:"proxyProtocol,omitempty"`
+	ProxyProtocolVersion *int  `json:"proxyProtocolVersion,omitempty"`
+
 	SetHostHeader *string           `json:"setHostHeader,omitempty"`
 	Headers       *[]ResourceHeader `json:"headers,omitempty"`
 	SkipToIdpID   *int              `json:"skipToIdpId,omitempty"`

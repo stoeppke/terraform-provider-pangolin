@@ -125,6 +125,8 @@ resource "pangolin_resource" "under_maintenance" {
 - `post_auth_path` (String) Landing path after a successful login (e.g. `/dashboard`).
 - `protocol` (String) The L4 protocol (tcp or udp). Only meaningful for the `ssh` / `rdp` / `vnc` / `tcp` / `udp` L4 modes; ignored for `http`. Defaults to `tcp`.
 - `proxy_port` (Number) The proxy port that the Pangolin edge listens on for this L4 resource. Required for `ssh` / `rdp` / `vnc` / `tcp` / `udp` modes; ignored for `http`. Changing this attribute forces replacement.
+- `proxy_protocol` (Boolean) Open each upstream connection of an L4 (`tcp`/`udp`) resource with a PROXY protocol header carrying the client's address. L4 resources only; HTTP resources refuse it.
+- `proxy_protocol_version` (Number) PROXY protocol version (1 or 2) used when `proxy_protocol` is true. L4 resources only.
 - `set_host_header` (String) Override the upstream `Host` header. Only meaningful for `mode = "http"`. Set to null to keep the incoming host.
 - `skip_to_idp_id` (Number) Bypass the Pangolin login page and jump straight to the given IdP.
 - `ssl` (Boolean) Enable SSL towards the backend.
@@ -141,8 +143,6 @@ resource "pangolin_resource" "under_maintenance" {
 - `health` (String) Server-reported aggregate health status (1.19+).
 - `id` (Number) The numeric ID of the resource.
 - `nice_id` (String) The human-readable ID of the resource.
-- `proxy_protocol` (Boolean) Whether PROXY-protocol encapsulation is on for the upstream L4 socket. Read-only in the current provider - the server-side POST endpoint refuses this key.
-- `proxy_protocol_version` (Number) PROXY-protocol version (1 or 2). Read-only in the current provider - the server-side POST endpoint refuses this key.
 - `resource_guid` (String) Server-assigned globally unique identifier (1.19+).
 - `resource_policy_id` (Number) ID of the shared resource-policy this resource is attached to (1.19+). Read-only: the resource-policy CRUD endpoints require an API key scoped to resource policies and are not exposed via this provider.
 - `wildcard` (Boolean) Whether the resource matches a wildcard subdomain (1.19+).
