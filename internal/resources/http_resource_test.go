@@ -578,3 +578,52 @@ func TestSubdomainRegex(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildL4ResourceUpdateRequest_ProxyProtocol(t *testing.T) {
+	plan := HTTPResourceModel{
+		Name:                 types.StringValue("mail-receiver-smtp"),
+		Mode:                 types.StringValue("tcp"),
+		Enabled:              types.BoolValue(true),
+		SSO:                  types.BoolValue(false),
+		SSL:                  types.BoolValue(false),
+		ProxyProtocol:        types.BoolValue(true),
+		ProxyProtocolVersion: types.Int64Value(2),
+	}
+	req := buildL4ResourceUpdateRequest(plan)
+	body, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{
+		"name":                 "mail-receiver-smtp",
+		"enabled":              true,
+		"proxyProtocol":        true,
+		"proxyProtocolVersion": float64(2),
+	}
+	if len(got) != len(want) {
+		t.Fatalf("payload = %s, want only %v (the raw update schema is strict)", body, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("%s = %v, want %v", k, got[k], v)
+		}
+	}
+}
+
+func TestBuildL4ResourceUpdateRequest_UnsetProxyProtocolOmitted(t *testing.T) {
+	plan := HTTPResourceModel{
+		Name:                 types.StringValue("ssh"),
+		Mode:                 types.StringValue("tcp"),
+		Enabled:              types.BoolValue(true),
+		ProxyProtocol:        types.BoolUnknown(),
+		ProxyProtocolVersion: types.Int64Null(),
+	}
+	req := buildL4ResourceUpdateRequest(plan)
+	if req.ProxyProtocol != nil || req.ProxyProtocolVersion != nil {
+		t.Errorf("unset PROXY protocol must stay off the wire, got %+v", req)
+	}
+}
